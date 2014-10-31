@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import RPi.GPIO as GPIO
+import Adafruit_BBIO.GPIO as GPIO
 import MFRC522
 import signal
 
@@ -12,6 +12,7 @@ def end_read(signal,frame):
     global continue_reading
     print "Ctrl+C captured, ending read."
     continue_reading = False
+    MFRC522.cleanup()
     GPIO.cleanup()
 
 # Hook the SIGINT
@@ -25,17 +26,20 @@ print "Welcome to the MFRC522 data read example"
 print "Press Ctrl-C to stop."
 
 # This loop keeps checking for chips. If one is near it will get the UID and authenticate
+char = 1
 while continue_reading:
-    
+    if char == 1:
+        pass
+        char = input("Level (1-break/2-iterate) :")
+
     # Scan for cards    
     (status,TagType) = MIFAREReader.MFRC522_Request(MIFAREReader.PICC_REQIDL)
 
     # If a card is found
     if status == MIFAREReader.MI_OK:
         print "Card detected"
-    
-    # Get the UID of the card
-    (status,uid) = MIFAREReader.MFRC522_Anticoll()
+        # Get the UID of the card
+        (status,uid) = MIFAREReader.MFRC522_Anticoll()
 
     # If we have the UID, continue
     if status == MIFAREReader.MI_OK:

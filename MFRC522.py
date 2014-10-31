@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
+# MFRC522 Raspberry Pi Code Modified to Work on Beaglbone Black with Adafruit Libraries
+# Work In Progress 10/31/2014 (v0.1)
 
-import RPi.GPIO as GPIO
-import spi
+import Adafruit_BBIO.GPIO as GPIO
+import Adafruit_BBIO.SPI as SPI
 import signal
 import time
   
@@ -11,6 +13,9 @@ class MFRC522:
   
   MAX_LEN = 16
   
+  debug = 1  #Setup and Function Debug Prints 
+  readdb = 1 #Read Debug Prints
+
   PCD_IDLE       = 0x00
   PCD_AUTHENT    = 0x0E
   PCD_RECEIVE    = 0x08
@@ -106,41 +111,82 @@ class MFRC522:
   Reserved34      = 0x3F
     
   serNum = []
+    
+   
   
-  def __init__(self, dev='/dev/spidev0.0', spd=1000000):
-    spi.openSPI(device=dev,speed=spd)
-    GPIO.setmode(GPIO.BOARD)
-    GPIO.setup(22, GPIO.OUT)
-    GPIO.output(self.NRSTPD, 1)
+
+  def __init__(self, dev=1, spd=1000000):
+    if self.debug:
+      pass
+      print "init"
+    self.spi = SPI.SPI(dev,0) 
+    self.spi.msh = spd
+    GPIO.setup("P8_10", GPIO.OUT)
+    GPIO.output("P8_10", GPIO.HIGH)
+    time.sleep(1)
+    GPIO.output("P8_10", GPIO.HIGH)
     self.MFRC522_Init()
-  
+
+  def cleanup(self):
+    self.spi.close()
+
   def MFRC522_Reset(self):
+    if self.debug:
+      pass
+      print "Reset"
     self.Write_MFRC522(self.CommandReg, self.PCD_RESETPHASE)
   
   def Write_MFRC522(self, addr, val):
-    spi.transfer(((addr<<1)&0x7E,val))
+     if self.debug:
+      pass
+      print "Write %#02x %#02x"%(addr,val)
+     self.spi.xfer2([(addr<<1)&0x7E])
+     self.spi.xfer2([val])
+    # spi.transfer(((addr<<1)&0x7E,val))
   
   def Read_MFRC522(self, addr):
-    val = spi.transfer((((addr<<1)&0x7E) | 0x80,0))
-    return val[1]
+    self.spi.xfer2([((addr<<1)&0x7E) | 0x80])
+    val = self.spi.xfer2([0])
+    if self.readdb:
+      pass
+      print "Read: %#02x Reg: %#02x"%(val[0],addr)
+    return val[0]
   
   def SetBitMask(self, reg, mask):
+    if self.debug:
+      pass
+      print "SetBit %#02x"%(reg)
     tmp = self.Read_MFRC522(reg)
     self.Write_MFRC522(reg, tmp | mask)
     
   def ClearBitMask(self, reg, mask):
+    if self.debug:
+      pass
+      print "ClearBit %#02x"%(reg)
     tmp = self.Read_MFRC522(reg);
     self.Write_MFRC522(reg, tmp & (~mask))
   
   def AntennaOn(self):
+    if self.debug:
+      pass
+      print "AntennaOn"
     temp = self.Read_MFRC522(self.TxControlReg)
     if(~(temp & 0x03)):
       self.SetBitMask(self.TxControlReg, 0x03)
   
   def AntennaOff(self):
+    if self.debug:
+      pass
+      print "AntennaOff"
     self.ClearBitMask(self.TxControlReg, 0x03)
   
   def MFRC522_ToCard(self,command,sendData):
+    if self.debug:
+      pass
+      print "MFRC522_ToCard CMD: %#02x "%(command)
+      print sendData
+     # for x in xrange(1,len(sendData)):
+     #   print "Data: %#02x"%(sendData[x-1])
     backData = []
     backLen = 0
     status = self.MI_ERR
@@ -175,8 +221,16 @@ class MFRC522:
     i = 2000
     while True:
       n = self.Read_MFRC522(self.CommIrqReg)
+      print "Tocard Status: %#02x"%(n)
       i = i - 1
-      if ~((i!=0) and ~(n&0x01) and ~(n&waitIRq)):
+      if(n&waitIRq):
+        print "waitIRq"
+        break
+      if(i==0):
+        print"i"
+        break
+      if(n&0x01):
+        print
         break
     
     self.ClearBitMask(self.BitFramingReg, 0x80)
@@ -212,6 +266,10 @@ class MFRC522:
   
   
   def MFRC522_Request(self, reqMode):
+    if self.debug:
+      pass
+      print "MFRC522_Request Reg: "
+      print "%#02x"%(reqMode)
     status = None
     backBits = None
     TagType = []
@@ -228,6 +286,9 @@ class MFRC522:
   
   
   def MFRC522_Anticoll(self):
+    if self.debug:
+      pass
+      print "MFRC552_Anticoll"
     backData = []
     serNumCheck = 0
     
@@ -254,6 +315,9 @@ class MFRC522:
     return (status,backData)
   
   def CalulateCRC(self, pIndata):
+    if self.debug:
+      pass
+      print "CRC %#02x"%(pIndata[0])
     self.ClearBitMask(self.DivIrqReg, 0x04)
     self.SetBitMask(self.FIFOLevelReg, 0x80);
     i = 0
@@ -273,6 +337,9 @@ class MFRC522:
     return pOutData
   
   def MFRC522_SelectTag(self, serNum):
+    if self.debug:
+      pass
+      print "SelectTag Ser: %#02x"(serNum[0])
     backData = []
     buf = []
     buf.append(self.PICC_SElECTTAG)
@@ -293,6 +360,9 @@ class MFRC522:
       return 0
   
   def MFRC522_Auth(self, authMode, BlockAddr, Sectorkey, serNum):
+    if self.debug:
+      pass
+      print "Auth"
     buff = []
 
     # First byte should be the authMode (A or B)
@@ -326,9 +396,15 @@ class MFRC522:
     return status
   
   def MFRC522_StopCrypto1(self):
+    if self.debug:
+      pass
+      print "StopCryptol"
     self.ClearBitMask(self.Status2Reg, 0x08)
 
   def MFRC522_Read(self, blockAddr):
+    if self.debug:
+      pass
+      print "MFRC522_Read addr: %#02x"%(blockAddr[0])
     recvData = []
     recvData.append(self.PICC_READ)
     recvData.append(blockAddr)
@@ -343,6 +419,9 @@ class MFRC522:
       print "Sector "+str(blockAddr)+" "+str(backData)
   
   def MFRC522_Write(self, blockAddr, writeData):
+    if self.debug:
+      pass
+      print "MFRC552_Write Addr: %#02x Data: %#02x"%(blockAddr[0],writeData[0]) 
     buff = []
     buff.append(self.PICC_WRITE)
     buff.append(blockAddr)
@@ -370,6 +449,9 @@ class MFRC522:
             print "Data written"
 
   def MFRC522_DumpClassic1K(self, key, uid):
+    if self.debug:
+      pass
+      print "DumpClassic1K"
     i = 0
     while i < 64:
         status = self.MFRC522_Auth(self.PICC_AUTHENT1A, i, key, uid)
@@ -381,16 +463,15 @@ class MFRC522:
         i = i+1
 
   def MFRC522_Init(self):
-    GPIO.output(self.NRSTPD, 1)
-  
-    self.MFRC522_Reset();
-    
-    
+    if self.debug:
+      pass
+      print "MFFRC22_Init"
+    GPIO.output("P8_10", GPIO.HIGH)
+    self.MFRC522_Reset();        
     self.Write_MFRC522(self.TModeReg, 0x8D)
     self.Write_MFRC522(self.TPrescalerReg, 0x3E)
     self.Write_MFRC522(self.TReloadRegL, 30)
     self.Write_MFRC522(self.TReloadRegH, 0)
-    
     self.Write_MFRC522(self.TxAutoReg, 0x40)
     self.Write_MFRC522(self.ModeReg, 0x3D)
     self.AntennaOn()
